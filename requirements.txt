@@ -3,3 +3,6 @@ opencv-contrib-python
 matplotlib
 numpy
 tornado
+# Task 2 ----------------------------------------
+pynput
+pillow
