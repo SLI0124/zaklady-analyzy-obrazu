@@ -1,3 +1,6 @@
+import os
+import time
+
 import cv2 as cv
 import numpy as np
 
@@ -38,6 +41,11 @@ def face_detect():
     eye_cascade = cv.CascadeClassifier("../input/task5/eye_cascade_fusek.xml")
     mouth_cascade = cv.CascadeClassifier("../input/task5/haarcascades/haarcascade_smile.xml")
 
+    if not os.path.exists("../output/task5/open"):
+        os.makedirs("../output/task5/open")
+    if not os.path.exists("../output/task5/closed"):
+        os.makedirs("../output/task5/closed")
+
     while True:
         ret, frame = video_cap.read()
         if frame is None:
@@ -63,6 +71,13 @@ def face_detect():
                     color = (0, 255, 0) if eye_open(face_roi[eye[1]:eye[1] + eye[3], eye[0]:eye[0] + eye[2]]) else (
                         0, 0, 255)
                     draw_rectangle(paint_frame[y:y + h, x:x + w], [eye], color, (203, 192, 255))
+
+                    # Save the frame to the corresponding folder
+                    timestamp = int(time.time())
+                    if is_eye_open:
+                        cv.imwrite(f"../output/task5/open/{timestamp}.jpg", paint_frame)
+                    else:
+                        cv.imwrite(f"../output/task5/closed/{timestamp}.jpg", paint_frame)
 
                 mouth = detect_faces(mouth_cascade, face_roi, 1.2, 50, (40, 40))
                 for m in mouth:
