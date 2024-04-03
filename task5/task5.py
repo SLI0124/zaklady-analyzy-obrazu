@@ -72,12 +72,13 @@ def face_detect():
                         0, 0, 255)
                     draw_rectangle(paint_frame[y:y + h, x:x + w], [eye], color, (203, 192, 255))
 
-                    # Save the frame to the corresponding folder
+                    # Save the face image if the eye is open
                     timestamp = int(time.time())
+                    is_eye_open = eye_open(face_roi[eye[1]:eye[1] + eye[3], eye[0]:eye[0] + eye[2]])
                     if is_eye_open:
-                        cv.imwrite(f"../output/task5/open/{timestamp}.jpg", paint_frame)
+                        cv.imwrite(f"../output/task5/open/{timestamp}.jpg", face_roi)
                     else:
-                        cv.imwrite(f"../output/task5/closed/{timestamp}.jpg", paint_frame)
+                        cv.imwrite(f"../output/task5/closed/{timestamp}.jpg", face_roi)
 
                 mouth = detect_faces(mouth_cascade, face_roi, 1.2, 50, (40, 40))
                 for m in mouth:
