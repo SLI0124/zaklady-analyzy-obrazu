@@ -1,3 +1,5 @@
+import glob
+
 import cv2
 import numpy as np
 import os
@@ -40,8 +42,7 @@ def visualize_best_result(best_result, model, empty_images, occupied_images, out
 
             axs[i, j].imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
             axs[i, j].set_title(
-                f"Label: {label}, Predicted: {model.predict([get_lbp_features(img, best_result['P'],
-                                                                              best_result['R'])])[0]}")
+                f"Label: {label}, Prediction: {model.predict([get_lbp_features(img, best_result['P'], best_result['R'])])[0]}")
             axs[i, j].axis('off')
 
     plt.savefig(output_path)
@@ -134,10 +135,148 @@ def calculate_total_training_time(data):
     return total_time
 
 
-def parking_lot_lbp():
-    data = train_or_load_lbp_svm('../input/task6/parking_lot/', ['free', 'full'],
-                                 '../output/task6/parking_lot_results.json')
+def final_visualization_parking_spaces(model, p, r):
+    from task3.task3 import four_point_transform
 
+    pkm_file = open('../input/task3/map/parking_map_python.txt', 'r')
+    pkm_lines = pkm_file.readlines()
+    pkm_coords = [line.strip().split() for line in pkm_lines]
+
+    test_images = glob.glob("../input/task4/*.jpg")
+    test_results = glob.glob("../input/task4/*.txt")
+
+    template_images = glob.glob("../input/task3/templates/*.jpg")
+    test_images.sort()
+    test_results.sort()
+    size = (80, 80)
+    tp, tn, fp, fn = 0, 0, 0, 0
+    total = 0
+    idx = 0
+
+    for image_name in test_images:
+        image = cv2.imread(image_name)
+        image_result = image.copy()
+        idx_parking_lot = 0
+
+        for coord, template in zip(pkm_coords, template_images):
+            one_place_img = four_point_transform(image, coord)
+            one_place_img = cv2.resize(one_place_img, size)
+
+            # using the best LBP parameters, detect if the parking space is occupied or not
+            features = get_lbp_features(one_place_img, p, r)
+            prediction = model.predict([features])[0]
+
+            left_top = (int(coord[0]), int(coord[1]))
+            right_bottom = (int(coord[4]), int(coord[5]))
+            center_x = (left_top[0] + right_bottom[0]) // 2
+            center_y = (left_top[1] + right_bottom[1]) // 2
+
+            if prediction == 0:
+                cv2.circle(image_result, (center_x, center_y), 10, (0, 255, 0), -1)
+            else:
+                cv2.circle(image_result, (center_x, center_y), 10, (0, 0, 255), -1)
+
+            with open(test_results[idx], 'r') as f:
+                lines = f.readlines()
+                lines = [line.strip().split() for line in lines]
+
+                if prediction == 0 and int(lines[idx_parking_lot][0]) == 0:
+                    tp += 1
+                elif prediction == 0 and int(lines[idx_parking_lot][0]) == 1:
+                    fp += 1
+                elif prediction == 1 and int(lines[idx_parking_lot][0]) == 0:
+                    fn += 1
+                elif prediction == 1 and int(lines[idx_parking_lot][0]) == 1:
+                    tn += 1
+
+            total += 1
+            idx_parking_lot += 1
+
+            cv2.putText(image_result, str(idx_parking_lot), (center_x + 3, center_y + 3), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                        (0, 0, 0), 2)
+
+        idx += 1
+
+        scale_percent = 50
+        width = int(image_result.shape[1] * scale_percent / 100)
+        height = int(image_result.shape[0] * scale_percent / 100)
+        dim = (width, height)
+        image_result = cv2.resize(image_result, dim, interpolation=cv2.INTER_AREA)
+
+        # cv2.imshow('Parking Spaces', image_result)
+        # if cv2.waitKey(0) & 0xFF == ord('q'):
+        #     break
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+    print(f"True Positive: {tp}")
+    print(f"True Negative: {tn}")
+    print(f"False Positive: {fp}")
+    print(f"False Negative: {fn}")
+    print(f"Total: {total}")
+    print(f"Accuracy: {(tp + tn) / total}")
+    precision = tp / (tp + fp) if tp + fp != 0 else 0
+    print(f"Precision: {precision}")
+
+
+def final_visualization_open_close_eyes(model, p, r):
+    from task5.task5 import detect_faces
+    from task5.task5 import draw_rectangle
+    from task5.task5 import remove_duplicates
+
+    def eye_open(eye_img):
+        eye_img = cv2.resize(eye_img, (80, 80))
+        features = get_lbp_features(eye_img, p, r)
+        prediction = model.predict([features])[0]
+        return prediction == 0
+
+    video_cap = cv2.VideoCapture("../input/task5/fusek_face_car_01.avi")
+    # video_cap = cv.VideoCapture(0)
+    face_cascade = cv2.CascadeClassifier("../input/task5/haarcascades/haarcascade_frontalface_default.xml")
+    face_cascade_profile = cv2.CascadeClassifier("../input/task5/haarcascades/haarcascade_profileface.xml")
+    eye_cascade = cv2.CascadeClassifier("../input/task5/eye_cascade_fusek.xml")
+    mouth_cascade = cv2.CascadeClassifier("../input/task5/haarcascades/haarcascade_smile.xml")
+
+    while True:
+        ret, frame = video_cap.read()
+        if frame is None:
+            break
+        paint_frame = frame.copy()
+
+        locations_face_front = detect_faces(face_cascade, paint_frame, 1.2, 7, (100, 100))
+        locations_face_profile = detect_faces(face_cascade_profile, frame, 1.2, 7, (100, 100))
+
+        # If only front faces are detected, use them
+        locations_face = locations_face_front if len(locations_face_front) else locations_face_profile
+
+        # If both front and profile faces are detected, concatenate the two lists
+        if len(locations_face_front) and len(locations_face_profile):
+            locations_face = np.concatenate((locations_face_front, locations_face_profile), axis=0)
+        locations_face = remove_duplicates(locations_face, 100.0)
+
+        for one_face in locations_face:
+            draw_rectangle(paint_frame, [one_face], (0, 0, 255), (203, 192, 255))
+
+            for i, (x, y, w, h) in enumerate(locations_face):
+                face_roi = frame[y:y + h, x:x + w]
+                eyes = detect_faces(eye_cascade, face_roi, 1.3, 13, (30, 30))
+                for eye in eyes:
+                    color = (0, 255, 0) if eye_open(face_roi[eye[1]:eye[1] + eye[3], eye[0]:eye[0] + eye[2]]) else (
+                        0, 0, 255)
+                    draw_rectangle(paint_frame[y:y + h, x:x + w], [eye], color, (203, 192, 255))
+
+                mouth = detect_faces(mouth_cascade, face_roi, 1.2, 50, (40, 40))
+                for m in mouth:
+                    draw_rectangle(paint_frame[y:y + h, x:x + w], [m], (255, 0, 0), (203, 192, 255))
+
+            cv2.imshow("face_detect", paint_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+
+def parking_lot_lbp():
+    data = train_or_load_lbp_svm('../input/task6/free_full/', ['free', 'full'],
+                                 '../output/task6/parking_lot_results.json')
     best_result = data[0]
 
     best_results = [x for x in data if x['accuracy'] == 100]
@@ -165,8 +304,12 @@ def parking_lot_lbp():
 
     model.fit(features, labels)
 
-    visualize_best_result(best_result, model, empty_images, occupied_images,
-                          '../output/task6/parking_lot_predictions.png')
+    print(f"Best result parameters: P={best_result['P']}, R={best_result['R']}")
+
+    # visualize_best_result(best_result, model, empty_images, occupied_images,
+    #                       '../output/task6/parking_lot_predictions.png')
+
+    final_visualization_parking_spaces(model, best_result['P'], best_result['R'])
 
 
 def open_close_eyes_recognition_lbp():
@@ -204,8 +347,12 @@ def open_close_eyes_recognition_lbp():
 
     model.fit(features, labels)
 
-    visualize_best_result(best_result, model, open_images, closed_images,
-                          '../output/task6/eye_open_close_predictions.png')
+    # visualize_best_result(best_result, model, open_images, closed_images,
+    #                       '../output/task6/eye_open_close_predictions.png')
+
+    print(f"Best result parameters: P={best_result['P']}, R={best_result['R']}")
+
+    final_visualization_open_close_eyes(model, best_result['P'], best_result['R'])
 
 
 def main():
