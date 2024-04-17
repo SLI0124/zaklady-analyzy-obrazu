@@ -9,3 +9,6 @@ pillow
 # Task 6 ----------------------------------------
 scikit-image
 scikit-learn
+# Task 7 ----------------------------------------
+cmake # for dlib, make sure to have cmake in
+dlib # I've downlaoded from GitHub and installed it manually, in virtualenv run `python setup.py install`
